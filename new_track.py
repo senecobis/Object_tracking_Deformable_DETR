@@ -245,152 +245,6 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
 
     return mot_accums
 
-def main_EXCAV(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
-         write_images, output_dir, interpolate, verbose, load_results_dir,
-         data_root_dir, generate_attention_maps, frame_range,
-         _config, _log, _run, obj_detector_model):
-
-    if write_images:
-        assert output_dir is not None
-
-
-    if output_dir is not None:
-        if not osp.exists(output_dir):
-            os.makedirs(output_dir)
-
-        yaml.dump(
-            _config,
-            open(osp.join(output_dir, 'track.yaml'), 'w'),
-            default_flow_style=False)
-
-    ##########################
-    # Initialize the modules #
-    ##########################
-
-    # object detection
-    if obj_detector_model is None:
-        obj_detect_config_path = os.path.join(
-            os.path.dirname(obj_detect_checkpoint_file),
-            'config.yaml')
-        obj_detect_args = nested_dict_to_namespace(yaml.unsafe_load(open(obj_detect_config_path)))
-        img_transform = obj_detect_args.img_transform
-        obj_detector, _, obj_detector_post = build_model(obj_detect_args)
-
-        obj_detect_checkpoint = torch.load(
-            obj_detect_checkpoint_file, map_location=lambda storage, loc: storage)
-
-        obj_detect_state_dict = obj_detect_checkpoint['model']
-        # obj_detect_state_dict = {
-        #     k: obj_detect_state_dict[k] if k in obj_detect_state_dict
-        #     else v
-        #     for k, v in obj_detector.state_dict().items()}
-
-        obj_detect_state_dict = {
-            k.replace('detr.', ''): v
-            for k, v in obj_detect_state_dict.items()
-            if 'track_encoding' not in k}
-
-        obj_detector.load_state_dict(obj_detect_state_dict)
-        if 'epoch' in obj_detect_checkpoint:
-            print(f"INIT object detector [EPOCH: {obj_detect_checkpoint['epoch']}]")
-
-        obj_detector.cuda()
-    else:
-        obj_detector = obj_detector_model['model']
-        obj_detector_post = obj_detector_model['post']
-        img_transform = obj_detector_model['img_transform']
-
-    if hasattr(obj_detector, 'tracking'):
-        obj_detector.tracking()
-
-    track_logger = None
-
-    tracker = Tracker(
-        obj_detector, obj_detector_post, tracker_cfg,
-        generate_attention_maps, track_logger, verbose)
-
-    time_total = 0
-    num_frames = 0
-    mot_accums = []
-
-    dataset = TrackDatasetFactory(
-                dataset_name, root_dir=data_root_dir, img_transform=img_transform)
-    print("\n dataset", dataset.__len__())
-
-    tracker.reset()
-
-    seq = dataset[0]
-
-    image_root = data_root_dir + "/EXCAV/test/"
-    image_list = sorted(os.listdir(image_root))
-    #for i, image_file in enumerate(image_list):
-
-    #start_frame = int(frame_range['start'])
-    start_frame = int(image_list[0][:-4])
-    print("\n start_frame",start_frame)
-
-    #end_frame = int(frame_range['end'])
-    end_frame = int(image_list[-1][:-4])
-    print("\n end_frame",end_frame)
-
-    #images = np.load("/home/rpellerito/trackformer/data/EXCAV/test")
-    images = np.array([np.array(Image.open(image_root + fname)) for fname in image_list])
-    seq_loader = DataLoader(images, batch_size=1, shuffle=False)
-
-    #seq_loader = DataLoader(torch.utils.data.Subset(seq, range(start_frame, end_frame)))
-    print(range(start_frame, end_frame))
-    num_frames += len(seq_loader)
-
-    #results = seq.load_results(load_results_dir)
-
-    start = time.time()
-
-    for frame_id, frame_data in enumerate(tqdm.tqdm(seq_loader, file=sys.stdout)):
-        with torch.no_grad():
-            tracker.step(frame_data)
-
-    results = tracker.get_results()
-    print("\n results", results)
-
-    time_total += time.time() - start
-
-    print(f"NUM TRACKS: {len(results)} ReIDs: {tracker.num_reids}")
-    print(f"RUNTIME: {time.time() - start :.2f} s")
-
-    if interpolate:
-        results = interpolate_tracks(results)
-
-    if output_dir is not None:
-        print(f"WRITING RESULTS")
-        seq.write_results(results, output_dir)
-
-    if output_dir is not None and write_images:
-        print("PLOT SEQ")
-
-        if dataset_name == "EXCAV-ALL":
-            plot_sequence(
-                results, seq_loader, osp.join(output_dir, dataset_name, str(seq)),
-                write_images, generate_attention_maps)
-        else:
-            plot_sequence(
-                results, seq_loader, osp.join(output_dir, dataset_name, str(seq)),
-                write_images, generate_attention_maps) 
-
-    if time_total:
-        print(f"RUNTIME ALL SEQS (w/o EVAL or IMG WRITE): "
-                  f"{time_total:.2f} s for {num_frames} frames "
-                  f"({num_frames / time_total:.2f} Hz)")
-
-    if obj_detector_model is None:
-
-        summary, str_summary = evaluate_mot_accums(
-            mot_accums,
-            [str(s) for s in dataset if not s.no_gt])
-        print("\n summary", summary)
-
-        return summary
-
-    return mot_accums
 
 if __name__ == "__main__":
 
@@ -428,7 +282,7 @@ if __name__ == "__main__":
         frame_range={"start":0.0, "end":0.1}, _config="cfgs/track.yaml", _log=None, _run=None,
         obj_detector_model=None )
     """
-
+    """
     main(dataset_name="EXCAV", data_root_dir="data/EXCAV/test", \
         output_dir="data/EXCAV/output", write_images="pretty", seed=666, interpolate=False,\
         verbose=True, load_results_dir=None,  generate_attention_maps=False,\
@@ -437,11 +291,13 @@ if __name__ == "__main__":
         frame_range={"start":0.0, "end":1.0}, _config="cfgs/track.yaml", _log=None, _run=None,
         obj_detector_model=None )
     
+     """
 
-    """ffmpeg -i data/snakeboard/snakeboard.mp4 -vf fps=30 data/snakeboard/%06d.png
+    main(dataset_name="EXCAV", data_root_dir="data/EXCAV/test", \
+        output_dir="data/EXCAV/output", write_images="pretty", seed=666, interpolate=False,\
+        verbose=True, load_results_dir=None,  generate_attention_maps=False,\
+        tracker_cfg=tracker_cfg, \
+        obj_detect_checkpoint_file="/home/rpellerito/trackformer/models/detr_panoptic_model.pth",
+        frame_range={"start":0.0, "end":1.0}, _config="cfgs/track.yaml", _log=None, _run=None,
+        obj_detector_model=None )
 
-python src/track.py with \
-    dataset_name=DEMO \
-    data_root_dir=data/snakeboard \
-    output_dir=data/snakeboard \
-    write_images=pretty"""
