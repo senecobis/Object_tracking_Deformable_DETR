@@ -14,6 +14,8 @@ from ..util.misc import (NestedTensor, accuracy, dice_loss, get_world_size,
                          nested_tensor_from_tensor_list, sigmoid_focal_loss)
 
 
+#strict
+
 class DETR(nn.Module):
     """ This is the DETR module that performs object detection. """
 
@@ -60,7 +62,7 @@ class DETR(nn.Module):
         # return [1024, 512, 256]
 
     def forward(self, samples: NestedTensor, targets: list = None):
-        """ The forward expects a NestedTensor, which consists of:
+        """ The forward expects a NestedTensor, which consists of:
                - samples.tensor: batched images, of shape [batch_size x 3 x H x W]
                - samples.mask: a binary mask of shape [batch_size x H x W],
                                containing 1 on padded pixels
@@ -116,6 +118,7 @@ class DETR(nn.Module):
             src, mask, query_embed, pos, tgt)
 
         outputs_class = self.class_embed(hs)
+        
         outputs_coord = self.bbox_embed(hs).sigmoid()
         out = {'pred_logits': outputs_class[-1],
                'pred_boxes': outputs_coord[-1],
