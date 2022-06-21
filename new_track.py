@@ -1,4 +1,5 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+from email.policy import strict
 import os
 from pickle import NONE
 import sys
@@ -81,14 +82,20 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
     # object detection
     if obj_detector_model is None:
         obj_detect_config_path = os.path.join(
-            os.path.dirname(obj_detect_checkpoint_file),
-            'config.yaml')
+            os.path.dirname(obj_detect_checkpoint_file),'config.yaml')
+        
         obj_detect_args = nested_dict_to_namespace(yaml.unsafe_load(open(obj_detect_config_path)))
         img_transform = obj_detect_args.img_transform
+
+        obj_detect_args.dataset = "coco_panoptic"    # added by me 
+
         obj_detector, _, obj_detector_post = build_model(obj_detect_args)
+        #print(obj_detector)
 
         obj_detect_checkpoint = torch.load(
             obj_detect_checkpoint_file, map_location=lambda storage, loc: storage)
+        
+        #print("\n obj_detect_checkpoint", obj_detect_checkpoint)
 
         obj_detect_state_dict = obj_detect_checkpoint['model']
         # obj_detect_state_dict = {
@@ -96,14 +103,25 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
         #     else v
         #     for k, v in obj_detector.state_dict().items()}
 
+        detr_model = False
+        if detr_model:
+
+            print("\n obj_detect_state_dict", obj_detect_state_dict["detr.class_embed.weight"])
+
+            del obj_detect_state_dict["detr.class_embed.weight"]
+            del obj_detect_state_dict["detr.class_embed.bias"]
+
         obj_detect_state_dict = {
             k.replace('detr.', ''): v
             for k, v in obj_detect_state_dict.items()
             if 'track_encoding' not in k}
 
-        obj_detector.load_state_dict(obj_detect_state_dict)
+        #print("\n obj_detect_state_dict", obj_detect_state_dict["mask_head.adapter3.bias"])
+
+        obj_detector.load_state_dict(obj_detect_state_dict, strict=False)
         if 'epoch' in obj_detect_checkpoint:
             print(f"INIT object detector [EPOCH: {obj_detect_checkpoint['epoch']}]")
+
 
         obj_detector.cuda()
     else:
@@ -140,7 +158,7 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
         print("\n",start_frame)
 
         #end_frame = int(frame_range['end'] * len(seq)) 
-        end_frame = int(frame_range['start']+1300) 
+        end_frame = int(frame_range['start']+1000) 
         print("\n",end_frame)
 
 
@@ -182,7 +200,7 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
 
         if seq.no_gt:
             print(seq.no_gt)
-           # _log.info("NO GT AVAILBLE")
+            print("NO GT AVAILBLE")
         else:
             print(np.size(results))
             mot_accum = get_mot_accum(results, seq_loader)
@@ -216,16 +234,10 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
                 #_log.info(f'SWITCH_GAPS_HIST (bin_width=10): {switch_gaps_hist}')
 
         if output_dir is not None and write_images:
-            #_log.info("PLOT SEQ")
-
-            if dataset_name == "EXCAV-ALL":
-                plot_sequence(
-                    results, seq_loader, osp.join(output_dir, dataset_name, str(seq)),
-                    write_images, generate_attention_maps)
-            else:
-                plot_sequence(
-                    results, seq_loader, osp.join(output_dir, dataset_name, str(seq)),
-                    write_images, generate_attention_maps) 
+    
+            plot_sequence(
+                results, seq_loader, osp.join(output_dir, dataset_name, str(seq)),
+                write_images, generate_attention_maps) 
 
     #if time_total:
     #    _log.info(f"RUNTIME ALL SEQS (w/o EVAL or IMG WRITE): "
@@ -239,7 +251,6 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
             mot_accums,
             [str(s) for s in dataset if not s.no_gt])
         print("\n summary", summary)
-        #_log.info(f'\n{str_summary}')
 
         return summary
 
@@ -295,9 +306,9 @@ if __name__ == "__main__":
 
     main(dataset_name="EXCAV", data_root_dir="data/EXCAV/test", \
         output_dir="data/EXCAV/output", write_images="pretty", seed=666, interpolate=False,\
-        verbose=True, load_results_dir=None,  generate_attention_maps=False,\
+        verbose=True, load_results_dir=None,  generate_attention_maps=True,\
         tracker_cfg=tracker_cfg, \
-        obj_detect_checkpoint_file="/home/rpellerito/trackformer/models/detr_panoptic_model.pth",
+        obj_detect_checkpoint_file="/home/rpellerito/trackformer/models/Excav_detr_multi_frame/detr_panoptic_model.pth",
         frame_range={"start":0.0, "end":1.0}, _config="cfgs/track.yaml", _log=None, _run=None,
         obj_detector_model=None )
 

@@ -303,7 +303,11 @@ class Tracker:
             target = {k: v.to(self.device) for k, v in target.items()}
             target = [target]
 
+        #print(f"\n img {img}, \n target {target}, \n self._prev_features[0] {self._prev_features[0]} ")
+        
         outputs, _, features, _, _ = self.obj_detector(img, target, self._prev_features[0])
+        #outputs, _, features, _, _ = self.obj_detector(img, target)
+
 
         hs_embeds = outputs['hs_embed'][0]
 
