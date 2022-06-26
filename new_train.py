@@ -7,7 +7,7 @@ from argparse import Namespace
 from pathlib import Path
 
 import numpy as np
-import sacred
+#import sacred
 import torch
 import yaml
 from torch.utils.data import DataLoader, DistributedSampler
@@ -20,24 +20,59 @@ from trackformer.util.misc import nested_dict_to_namespace
 from trackformer.util.plot_utils import get_vis_win_names
 from trackformer.vis import build_visualizers
 
-ex = sacred.Experiment('train')
-ex.add_config('cfgs/train.yaml')
-ex.add_named_config('deformable', 'cfgs/train_deformable.yaml')
-ex.add_named_config('tracking', 'cfgs/train_tracking.yaml')
-ex.add_named_config('crowdhuman', 'cfgs/train_crowdhuman.yaml')
-ex.add_named_config('mot17', 'cfgs/train_mot17.yaml')
-ex.add_named_config('mot17_cross_val', 'cfgs/train_mot17_cross_val.yaml')
-ex.add_named_config('mots20', 'cfgs/train_mots20.yaml')
-ex.add_named_config('coco_person_masks', 'cfgs/train_coco_person_masks.yaml')
-ex.add_named_config('full_res', 'cfgs/train_full_res.yaml')
-ex.add_named_config('focal_loss', 'cfgs/train_focal_loss.yaml')
+#ex = sacred.Experiment('train')
+#ex.add_config('cfgs/train.yaml')
+#ex.add_named_config('deformable', 'cfgs/train_deformable.yaml')
+#ex.add_named_config('tracking', 'cfgs/train_tracking.yaml')
+#ex.add_named_config('crowdhuman', 'cfgs/train_crowdhuman.yaml')
+#ex.add_named_config('mot17', 'cfgs/train_mot17.yaml')
+#ex.add_named_config('mot17_cross_val', 'cfgs/train_mot17_cross_val.yaml')
+#ex.add_named_config('mots20', 'cfgs/train_mots20.yaml')
+#ex.add_named_config('coco_person_masks', 'cfgs/train_coco_person_masks.yaml')
+#ex.add_named_config('full_res', 'cfgs/train_full_res.yaml')
+#ex.add_named_config('focal_loss', 'cfgs/train_focal_loss.yaml')
+
+
+def import_config():
+    with open("/home/rpellerito/old_trackformer/cfgs/train.yaml", 'r') as stream:
+        try:
+            train_yaml=yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+    with open("/home/rpellerito/old_trackformer/cfgs/train_deformable.yaml", 'r') as stream:
+        try:
+            deformable_yaml=yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+    with open("/home/rpellerito/old_trackformer/cfgs/train_tracking.yaml", 'r') as stream:
+        try:
+            tracking_yaml=yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+    with open("/home/rpellerito/old_trackformer/cfgs/train_mots20.yaml", 'r') as stream:
+        try:
+            mots20_yaml=yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+    with open("/home/rpellerito/old_trackformer/cfgs/train.yaml", 'r') as stream:
+        try:
+            full_res_yaml=yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+    with open("/home/rpellerito/old_trackformer/cfgs/train_full_res.yaml", 'r') as stream:
+        try:
+            focal_loss_yaml=yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+    
+    return train_yaml, deformable_yaml, tracking_yaml, mots20_yaml, full_res_yaml, focal_loss_yaml
 
 
 def train(args: Namespace) -> None:
     print(args)
 
     utils.init_distributed_mode(args)
-    print("git:\n  {}\n".format(utils.get_sha()))
+    #print("git:\n  {}\n".format(utils.get_sha()))
 
     if args.debug:
         # args.tracking_eval = False
@@ -76,6 +111,58 @@ def train(args: Namespace) -> None:
     # torch.backends.cudnn.deterministic = True
 
     model, criterion, postprocessors = build_model(args)
+
+    ######### ######### added this part to load our model ######### #########
+
+    # our model
+    obj_detect_checkpoint_file = "/home/rpellerito/old_trackformer/models/Excav_detr_multi_frame/detr_panoptic_model.pth"
+    obj_detect_checkpoint = torch.load(
+        obj_detect_checkpoint_file, map_location=lambda storage, loc: storage)
+
+    obj_detect_state_dict = obj_detect_checkpoint['model']
+
+    new_obj_detect_state_dict = obj_detect_state_dict.copy()
+    for field in new_obj_detect_state_dict:
+        if field[0:4] == "detr":                
+            obj_detect_state_dict[field[5:]] =  obj_detect_state_dict[field]
+            del obj_detect_state_dict[field]
+            new_field = field[5:]
+    
+    # load new layers
+    track_att_checkpoint = torch.load(
+        "models/mots20_train_masks/checkpoint.pth", map_location=lambda storage, loc: storage)
+
+    track_att_state_dict = track_att_checkpoint['model']
+
+    # add trackattention layers
+    for keys in track_att_state_dict:
+        if keys not in new_obj_detect_state_dict and keys[5:13] != "backbone":
+            #print("\n new key :", keys)
+            obj_detect_state_dict[keys] = track_att_state_dict[keys]
+    
+    obj_detect_state_dict = {
+            k.replace('detr.', ''): v
+            for k, v in obj_detect_state_dict.items()
+            if 'track_encoding' not in k}
+
+    #for key in obj_detect_state_dict:
+    #    print(key)
+
+    detr_model = True
+    if detr_model:
+        print("\n obj_detect_state_dict", obj_detect_state_dict["class_embed.weight"])
+
+        del obj_detect_state_dict["class_embed.weight"] #torch.Size([2, 256]).
+        del obj_detect_state_dict["class_embed.bias"]   #torch.Size([2]).
+
+        obj_detect_state_dict["class_embed.weight"] = torch.zeros(2,256)
+        obj_detect_state_dict["class_embed.bias"] = torch.zeros(2)
+
+    model.load_state_dict(obj_detect_state_dict, strict=False) # Change strict
+    print(model)
+ 
+    ######### ######### end of the code snippet to load our model ######### #########
+
     model.to(device)
 
     visualizers = build_visualizers(args)
@@ -122,7 +209,6 @@ def train(args: Namespace) -> None:
 
     if args.distributed:
         sampler_train = utils.DistributedWeightedSampler(dataset_train)
-        # sampler_train = DistributedSampler(dataset_train)
         sampler_val = DistributedSampler(dataset_val, shuffle=False)
     else:
         sampler_train = torch.utils.data.RandomSampler(dataset_train)
@@ -136,6 +222,7 @@ def train(args: Namespace) -> None:
         batch_sampler=batch_sampler_train,
         collate_fn=utils.collate_fn,
         num_workers=args.num_workers)
+
     data_loader_val = DataLoader(
         dataset_val, args.batch_size,
         sampler=sampler_val,
@@ -145,20 +232,13 @@ def train(args: Namespace) -> None:
 
     best_val_stats = None
     if args.resume:
-        if args.resume.startswith('https'):
-            checkpoint = torch.hub.load_state_dict_from_url(
-                args.resume, map_location='cpu', check_hash=True)
-        else:
-            checkpoint = torch.load(args.resume, map_location='cpu')
+
+        checkpoint = torch.load(args.resume, map_location='cpu')
 
         model_state_dict = model_without_ddp.state_dict()
         checkpoint_state_dict = checkpoint['model']
         checkpoint_state_dict = {
             k.replace('detr.', ''): v for k, v in checkpoint['model'].items()}
-
-        # for k, v in checkpoint_state_dict.items():
-        #     if k not in model_state_dict:
-        #         print(f'Where is {k} {tuple(v.shape)}?')
 
         resume_state_dict = {}
         for k, v in model_state_dict.items():
@@ -180,24 +260,10 @@ def train(args: Namespace) -> None:
                     resume_state_dict[k] = v
                     print(f'Load {k} {tuple(v.shape)} from scratch.')
                     continue
-                #     if checkpoint_value.shape[1] * 2 == v.shape[1]:
-                #         # from hidden size 256 to 512
-                #         resume_value = checkpoint_value.repeat(1, 2)
-                #     elif checkpoint_value.shape[0] * 5 == v.shape[0]:
-                #         # from 100 to 500 object queries
-                #         resume_value = checkpoint_value.repeat(5, 1)
-                #     elif checkpoint_value.shape[0] > v.shape[0]:
-                #         resume_value = checkpoint_value[:v.shape[0]]
-                #     elif checkpoint_value.shape[0] < v.shape[0]:
-                #         resume_value = v
-                #     else:
-                #         raise NotImplementedError
+
                 elif 'linear2' in k or 'input_proj' in k:
                     resume_value = checkpoint_value.repeat((2,) + (num_dims - 1) * (1, ))
                 elif 'class_embed' in k:
-                    # person and no-object class
-                    # resume_value = checkpoint_value[[1, -1]]
-                    # resume_value = checkpoint_value[[0, -1]]
                     resume_value = checkpoint_value[[1,]]
                     # resume_value = v
                     # print(f'Load {k} {tuple(v.shape)} from scratch.')
@@ -210,8 +276,7 @@ def train(args: Namespace) -> None:
                 checkpoint_value = checkpoint_state_dict[k]
                 # no-object class
                 resume_value = checkpoint_value.clone()
-                # no-object class
-                # resume_value[:-2] = checkpoint_value[1:-1].clone()
+      
                 resume_value[:-1] = checkpoint_value[1:].clone()
                 resume_value[-2] = checkpoint_value[0].clone()
                 print(f"Load {k} {tuple(v.shape)} from resume model and "
@@ -232,7 +297,7 @@ def train(args: Namespace) -> None:
                     print(f'Load {k} {tuple(v.shape)} from mask head model.')
                     resume_state_dict[k] = checkpoint_mask_head['model'][k]
 
-        model_without_ddp.load_state_dict(resume_state_dict)
+        model_without_ddp.load_state_dict(resume_state_dict,  strict=True)
 
         # RESUME OPTIM
         if not args.eval_only and args.resume_optim:
@@ -270,6 +335,7 @@ def train(args: Namespace) -> None:
         # TRAIN
         if args.distributed:
             sampler_train.set_epoch(epoch)
+        
         train_one_epoch(
             model, criterion, postprocessors, data_loader_train, optimizer, device, epoch,
             visualizers['train'], args)
@@ -293,9 +359,6 @@ def train(args: Namespace) -> None:
                 output_dir, visualizers['val'], args, epoch)
 
             checkpoint_paths = [output_dir / 'checkpoint.pth']
-            # extra checkpoint before LR drop and every 100 epochs
-            # if (epoch + 1) % args.lr_drop == 0 or (epoch + 1) % 10 == 0:
-            #     checkpoint_paths.append(output_dir / f'checkpoint{epoch:04}.pth')
 
             # checkpoint for best validation stats
             stat_names = ['BBOX_AP_IoU_0_50-0_95', 'BBOX_AP_IoU_0_50', 'BBOX_AP_IoU_0_75']
@@ -334,18 +397,29 @@ def train(args: Namespace) -> None:
     print('Training time {}'.format(total_time_str))
 
 
-@ex.main
-def load_config(_config, _run):
-    """ We use sacred only for config loading from YAML files. """
-    sacred.commands.print_config(_run)
-
 
 if __name__ == '__main__':
-    # TODO: hierachical Namespacing for nested dict
-    config = ex.run_commandline().config
 
-    print(config)
+    train_yaml, deformable_yaml, tracking_yaml, \
+        mots20_yaml, full_res_yaml, focal_loss_yaml = import_config()
+
+    config = {**train_yaml, **deformable_yaml, **tracking_yaml, **mots20_yaml, 
+    **full_res_yaml, **focal_loss_yaml} # dictionary concatenation
+
+    # override configuration from my side
+    config["vis_server"] = ""
+    config["no_vis"] = True
+    config["dataset"] = "mot"     #config["dataset"] = "mot"
+    #config["dataset_classes_to_use"] = "mot"
+    config["num_workers"] = 0
+    config["deformable"] = False
+    config["tracking"] = True
+    config["mask"] = True
+    config["track_attention"] = True
+    config["tracking_eval"] = False
+    config["backbone"]= 'resnet50'
+
 
     args = nested_dict_to_namespace(config)
-    # args.train = Namespace(**config['train'])
+
     train(args)

@@ -14,6 +14,17 @@ from .transformer import build_transformer
 
 
 def build_model(args):
+
+    """if args.dataset_classes_to_use == 'coco':
+        num_classes = 91
+    elif args.dataset_classes_to_use == 'coco_panoptic':
+        num_classes = 250
+    elif args.dataset_classes_to_use in ['coco_person', 'mot', 'mot_crowdhuman', 'crowdhuman']:
+        num_classes = 1
+        #num_classes = 250
+    else:
+        raise NotImplementedError"""
+
     if args.dataset == 'coco':
         num_classes = 91
     elif args.dataset == 'coco_panoptic':

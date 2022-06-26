@@ -226,13 +226,23 @@ class MetricLogger(object):
                 'data_time: {data}'
             ])
         MB = 1024.0 * 1024.0
+
+
         for obj in iterable:
+
             data_time.update(time.time() - end)
+
             yield obj
+
             iter_time.update(time.time() - end)
+
+
             if i % self.print_freq == 0 or i == len(iterable) - 1:
                 eta_seconds = iter_time.global_avg * (len(iterable) - i)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+
+                #print("\n eta_seconds in misc", eta_seconds)
+
                 if torch.cuda.is_available():
                     print(log_msg.format(
                         i * get_world_size(), world_len_iterable, eta=eta_string,
@@ -257,6 +267,8 @@ class MetricLogger(object):
                 # if i != 0 and i % self.print_freq == 0:
                 if self.debug and i % self.print_freq == 0:
                     break
+
+                #print("\n END OF THE FOR \n")
 
             i += 1
             end = time.time()

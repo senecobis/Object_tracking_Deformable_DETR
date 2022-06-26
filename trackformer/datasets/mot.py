@@ -130,6 +130,7 @@ def build_mot(image_set, args):
         root = Path(args.mot_path_train)
         prev_frame_rnd_augs = args.track_prev_frame_rnd_augs
         prev_frame_range=args.track_prev_frame_range
+
     elif image_set == 'val':
         root = Path(args.mot_path_val)
         prev_frame_rnd_augs = 0.0
@@ -141,8 +142,13 @@ def build_mot(image_set, args):
 
     split = getattr(args, f"{image_set}_split")
 
-    img_folder = root / split
+    #img_folder = root / split
     ann_file = root / f"annotations/{split}.json"
+
+    img_folder = root /  f"mot17_{split}_1_coco" #  CHANGED DO TO INVALID PATH PREVIOUSLY SPECIFIED
+
+    print("\ntrain img_folder images", img_folder)
+
 
     transforms, norm_transforms = make_coco_transforms(
         image_set, args.img_transform, args.overflow_boxes)
