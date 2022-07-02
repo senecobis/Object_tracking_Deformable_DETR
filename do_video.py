@@ -5,8 +5,8 @@ import cv2
 import os
 import math
 
-image_folder = '/home/rpellerito/old_trackformer/data/outdir/EXCAV_pretDetr/EXCAV/test'
-video_name = '/home/rpellerito/EXCAV_segmentation_PretrainedDETR.mp4'
+image_folder = '/home/roberto/old_trackformer/data/outdir/TrackformerDetrRetrained/6_epochs_config/EXCAV/test'
+video_name = '/home/roberto/EXCAV_segmentation_6_epochs_on_Mots20DETR.mp4'
 images = []
 
 list = sorted(os.listdir(image_folder))

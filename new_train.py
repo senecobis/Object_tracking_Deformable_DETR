@@ -12,10 +12,13 @@ import torch
 import yaml
 from torch.utils.data import DataLoader, DistributedSampler
 
+
 from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
 import torch.nn as nn
 import wandb 
 wandb.init(project="DETR_obj_tracking")
+import matplotlib.pyplot as plt
+
 
 import trackformer.util.misc as utils
 from trackformer.datasets import build_dataset
@@ -87,8 +90,10 @@ def import_all_train_config():
             print(exc)
     return train_yaml
 
+loss_vec = []
 def train(args: Namespace, obj_detect_checkpoint_file ) -> None:
     print(args)
+
 
     utils.init_distributed_mode(args)
     #print("git:\n  {}\n".format(utils.get_sha()))
@@ -119,93 +124,90 @@ def train(args: Namespace, obj_detect_checkpoint_file ) -> None:
     seed = args.seed + utils.get_rank()
 
     os.environ['PYTHONHASHSEED'] = str(seed)
-    # os.environ['NCCL_DEBUG'] = 'INFO'
-    # os.environ["NCCL_TREE_THRESHOLD"] = "0"
 
     np.random.seed(seed)
     random.seed(seed)
 
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
-    # torch.backends.cudnn.deterministic = True
 
     model, criterion, postprocessors = build_model(args)
 
     ######### ######### added this part to load our model ######### #########
-    if args.restart_training:
-        print("\n reastarting training ")
+    args.use_excav_detr = False
+    if args.use_excav_detr:
+        if args.restart_training:
+            print("\n reastarting training ")
 
-        # our model
-        obj_detect_checkpoint = torch.load(
-            obj_detect_checkpoint_file, map_location=lambda storage, loc: storage)
+            # our model
+            obj_detect_checkpoint = torch.load(
+                obj_detect_checkpoint_file, map_location=lambda storage, loc: storage)
 
-        obj_detect_state_dict = obj_detect_checkpoint['model']
+            obj_detect_state_dict = obj_detect_checkpoint['model']
 
-        new_obj_detect_state_dict = obj_detect_state_dict.copy()
-        for field in new_obj_detect_state_dict:
-            if field[0:4] == "detr":                
-                obj_detect_state_dict[field[5:]] =  obj_detect_state_dict[field]
-                del obj_detect_state_dict[field]
-                new_field = field[5:]
-        
-        # load new layers
-        track_att_checkpoint = torch.load(
-            "models/mots20_train_masks/checkpoint.pth", map_location=lambda storage, loc: storage)
+            new_obj_detect_state_dict = obj_detect_state_dict.copy()
+            for field in new_obj_detect_state_dict:
+                if field[0:4] == "detr":                
+                    obj_detect_state_dict[field[5:]] =  obj_detect_state_dict[field]
+                    del obj_detect_state_dict[field]
+                    new_field = field[5:]
+            
+            # load new layers
+            track_att_checkpoint = torch.load(
+                "models/mots20_train_masks/checkpoint.pth", map_location=lambda storage, loc: storage)
 
-        track_att_state_dict = track_att_checkpoint['model']
+            track_att_state_dict = track_att_checkpoint['model']
 
-        # add trackattention layers
-        for keys in track_att_state_dict:
-            if keys not in new_obj_detect_state_dict and keys[5:13] != "backbone":
-                #print("\n new key :", keys)
-                obj_detect_state_dict[keys] = track_att_state_dict[keys]
-        
-        obj_detect_state_dict = {
-                k.replace('detr.', ''): v
-                for k, v in obj_detect_state_dict.items()
-                if 'track_encoding' not in k}
+            # add trackattention layers
+            for keys in track_att_state_dict:
+                if keys not in new_obj_detect_state_dict and keys[5:13] != "backbone":
+                    #print("\n new key :", keys)
+                    obj_detect_state_dict[keys] = track_att_state_dict[keys]
+            
+            obj_detect_state_dict = {
+                    k.replace('detr.', ''): v
+                    for k, v in obj_detect_state_dict.items()
+                    if 'track_encoding' not in k}
 
-        #for key in obj_detect_state_dict:
-        #    print(key)
+            #for key in obj_detect_state_dict:
+            #    print(key)
 
-        detr_model = True
-        if detr_model:
+            detr_model = True
+            if detr_model:
 
-            weight_tensor = obj_detect_state_dict["class_embed.weight"][:2, :].clone()
-            bias_tensor = obj_detect_state_dict["class_embed.bias"][:2].clone()
+                weight_tensor = obj_detect_state_dict["class_embed.weight"][:2, :].clone()
+                bias_tensor = obj_detect_state_dict["class_embed.bias"][:2].clone()
 
-            del obj_detect_state_dict["class_embed.weight"] #torch.Size([2, 256]).
-            del obj_detect_state_dict["class_embed.bias"]   #torch.Size([2]).
+                del obj_detect_state_dict["class_embed.weight"] #torch.Size([2, 256]).
+                del obj_detect_state_dict["class_embed.bias"]   #torch.Size([2]).
 
-            #obj_detect_state_dict["class_embed.weight"] = torch.zeros(2,256)
-            #obj_detect_state_dict["class_embed.bias"] = torch.zeros(2)
+                #obj_detect_state_dict["class_embed.weight"] = torch.zeros(2,256)
+                #obj_detect_state_dict["class_embed.bias"] = torch.zeros(2)
 
-            obj_detect_state_dict["class_embed.weight"] = weight_tensor
-            obj_detect_state_dict["class_embed.bias"] = bias_tensor
+                obj_detect_state_dict["class_embed.weight"] = weight_tensor
+                obj_detect_state_dict["class_embed.bias"] = bias_tensor
 
-        for k, v in obj_detect_state_dict.items():
+            for k, v in obj_detect_state_dict.items():
 
-            if 'layers_track_attention' in k:
-                #print(obj_detect_state_dict[k].shape)
-                #for dim in obj_detect_state_dict[k].shape:
-                if len(obj_detect_state_dict[k].shape) <= 1: # xavier initializer is not for bias
-                    shape =  obj_detect_state_dict[k].shape
-                    obj_detect_state_dict[k] = torch.zeros(shape)
-                else:
-                    nn.init.xavier_uniform_(obj_detect_state_dict[k])
-                    #print(obj_detect_state_dict[k])
+                if 'layers_track_attention' in k:
+                    #print(obj_detect_state_dict[k].shape)
+                    #for dim in obj_detect_state_dict[k].shape:
+                    if len(obj_detect_state_dict[k].shape) <= 1: # xavier initializer is not for bias
+                        shape =  obj_detect_state_dict[k].shape
+                        obj_detect_state_dict[k] = torch.zeros(shape)
+                    else:
+                        nn.init.xavier_uniform_(obj_detect_state_dict[k])
+                        #print(obj_detect_state_dict[k])
 
-        model.load_state_dict(obj_detect_state_dict, strict=False) # Change strict
-        print(model)
-    else:
-        print("\n loading PRETRAINED model ")
-        obj_detect_checkpoint = torch.load(
-            obj_detect_checkpoint_file, map_location=lambda storage, loc: storage)
+            model.load_state_dict(obj_detect_state_dict, strict=False) # Change strict
+            print(model)
+        else:
+            print("\n loading PRETRAINED model ")
+            obj_detect_checkpoint = torch.load(
+                obj_detect_checkpoint_file, map_location=lambda storage, loc: storage)
 
-        obj_detect_state_dict = obj_detect_checkpoint['model']
-        model.load_state_dict(obj_detect_state_dict, strict=False) # Change strict
-
-
+            obj_detect_state_dict = obj_detect_checkpoint['model']
+            model.load_state_dict(obj_detect_state_dict, strict=False) # Change strict
     ######### ######### end of the code snippet to load our model ######### #########
 
     model.to(device)
@@ -365,16 +367,30 @@ def train(args: Namespace, obj_detect_checkpoint_file ) -> None:
                 for k_inner in v.keys():
                     visualizers[k][k_inner].win = checkpoint['vis_win_names'][k][k_inner]
 
+    args.eval_only = False
     if args.eval_only:
-        _, coco_evaluator = evaluate(
+        eval_stats, coco_evaluator = evaluate(
             model, criterion, postprocessors, data_loader_val, device,
             output_dir, visualizers['val'], args)
+
         if args.output_dir:
             utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
 
         return
 
-    print("Start training")
+
+    look_inside = True
+    if look_inside :
+
+        parameters = {"params": [p for n, p in model_without_ddp.named_parameters() \
+                if match_name_keywords(n, ['layers_track_attention']) and p.requires_grad]}
+        
+        print(f"\n those are the params : {parameters} and those their number \n \
+        {sum(p.numel() for n, p in model_without_ddp.named_parameters() if match_name_keywords(n, ['layers_track_attention']) and p.requires_grad)}")
+        
+        return
+
+    print("\n \n Start training \n \n ")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs + 1):
         # TRAIN
@@ -385,33 +401,43 @@ def train(args: Namespace, obj_detect_checkpoint_file ) -> None:
         scheduler = CosineAnnealingWarmupRestarts(optimizer,
                                           first_cycle_steps=200,
                                           cycle_mult=1.0,
-                                          max_lr=0.00005, # try with 10^-4, 5 * 10^-5 and 10^-5 as max values
-                                          min_lr=0.00001, # Min values an order of magnitude lower or quite smaller
-                                          warmup_steps=50,
+                                          max_lr=0.0005, # try with 10^-4, 5 * 10^-5 and 10^-5 as max values
+                                          min_lr=args.lr, # Min values an order of magnitude lower or quite smaller
+                                          warmup_steps=100,
                                           gamma=1.0)
-
-        print(f"\n the optimizer {optimizer} and the scheduler {scheduler} \n")
-
         
-        train_one_epoch(
+        metrics, loss = train_one_epoch(
             model, criterion, postprocessors, data_loader_train, optimizer, device, epoch,
             visualizers['train'], scheduler, args)
+        
 
+        args.eval_train = False # change this override
         if args.eval_train:
             random_transforms = data_loader_train.dataset._transforms
             data_loader_train.dataset._transforms = data_loader_val.dataset._transforms
-            evaluate(
+
+            eval_stats, coco_evaluator = evaluate(
                 model, criterion, postprocessors, data_loader_train, device,
                 output_dir, visualizers['train'], args, epoch)
+            
             data_loader_train.dataset._transforms = random_transforms
 
         lr_scheduler.step()
         scheduler.step()
 
         checkpoint_paths = [output_dir / 'checkpoint.pth']
+        
+        print("\n VALIDATION time of THE model ... \n")
+        validate = True
+        if epoch > 1 and validate:
+            val_stats, _ = evaluate(
+                model, criterion, postprocessors, data_loader_val, device,
+                output_dir, visualizers['val'], args, epoch)
 
         # VAL
+        
         if epoch == 1 or not epoch % args.val_interval:
+            print("\n VALIDATING THE model ... \n")
             val_stats, _ = evaluate(
                 model, criterion, postprocessors, data_loader_val, device,
                 output_dir, visualizers['val'], args, epoch)
@@ -433,6 +459,7 @@ def train(args: Namespace, obj_detect_checkpoint_file ) -> None:
             for b_s, s, n in zip(best_val_stats, val_stats, stat_names):
                 if b_s == s:
                     checkpoint_paths.append(output_dir / f"checkpoint_best_{n}.pth")
+        
 
         # MODEL SAVING
         print("\n saving the model ... \n")
@@ -459,21 +486,67 @@ def train(args: Namespace, obj_detect_checkpoint_file ) -> None:
 
 if __name__ == '__main__':
 
-    train_yaml, deformable_yaml, tracking_yaml, mots20_yaml, full_res_yaml, focal_loss_yaml, train_mot17_yaml = import_config()
+
+    train_yaml, deformable_yaml, tracking_yaml, mots20_yaml, \
+        full_res_yaml, focal_loss_yaml, train_mot17_yaml = import_config()
 
     #config = {**train_yaml, **deformable_yaml, **tracking_yaml, **mots20_yaml, 
     #**full_res_yaml, **focal_loss_yaml} # dictionary concatenation
+    train_mots20 = False
+    if train_mots20:
+        config = {**train_yaml, **tracking_yaml, **mots20_yaml} # dictionary concatenation
+        config["model_name"] = "TrackformerDetrRetrained"
+        config["save_model_interval"] = 1
 
-    #config = {**train_yaml, **tracking_yaml, **train_mot17_yaml} # dictionary concatenation
+        wandb.config = config
+        args = nested_dict_to_namespace(config)
 
-    config = import_all_train_config()
-    wandb.config = config
+        args.resume = "models/TrackformerDetrRetrained/checkpoint_epoch_6.pth"
+        args.output_dir="/home/roberto/old_trackformer/models/" + config["model_name"]
+        args.mot_path_train="data/MOTS20"
+        args.mot_path_val="data/MOTS20"
+        args.train_split="mots20_train_1_coco"
+        args.val_split="mots20_val_1_coco"
+        args.epochs= 20
+        args.val_interval = 1
 
-    # override configuration
-    config["model_name"] = "TrainedDetr_model"
-    config["output_dir"] = "/home/roberto/old_trackformer/models/" + config["model_name"]
+        train(args, None)
 
-    args = nested_dict_to_namespace(config)
+    else :
+        config = {**train_yaml, **tracking_yaml, **mots20_yaml} # dictionary concatenation
+        wandb.config = config
 
-    train(args, obj_detect_checkpoint_file = \
-    "/home/roberto/old_trackformer/models/TrainedDetr_model/checkpoint_epoch_1.pth")
+        # override configuration
+        config["use_excav_detr"] = train_mots20
+        config["model_name"] = "ExacavatorDETR"
+        config["output_dir"] = "/home/roberto/old_trackformer/models/" + config["model_name"]
+        config["eval_train"] = True
+        config["save_model_interval"] = 1
+        config["epochs"] = 5
+
+        args = nested_dict_to_namespace(config)
+
+        args.resume = "/home/roberto/old_trackformer/models/TrainedDetr_model_finetuned_new_epochs/checkpoint_epoch_91.pth"
+        args.mot_path_train="data/MOTS20"
+        args.mot_path_val="data/MOTS20"
+        args.train_split="mots20_train_1_coco"
+        args.val_split="mots20_val_1_coco"
+        args.val_interval = 1
+
+        train(args, None)
+
+
+    """
+    python src/train.py with \
+        mot17 \
+        deformable \
+        multi_frame \
+        tracking \
+        resume=models/mot17_crowdhuman_deformable_trackformer/checkpoint_epoch_40.pth \
+        output_dir=models/custom_dataset_deformable \
+        mot_path_train=data/custom_dataset \
+        mot_path_val=data/custom_dataset \
+        train_split=train \
+        val_split=val \
+        epochs=20 \
+        """

@@ -24,6 +24,8 @@ from .vis import vis_results
 
 import wandb 
 
+dataset_size = 2250
+
 
 
 def make_results(outputs, targets, postprocessors, tracking, return_only_orig=True):
@@ -93,7 +95,6 @@ def make_results(outputs, targets, postprocessors, tracking, return_only_orig=Tr
 
 avg_loss = []
 avg_class_error = []
-
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module, postprocessors,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, visualizers: dict, scheduler : torch.optim.lr_scheduler,
@@ -181,7 +182,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module, postproc
                 targets[0],
                 args.tracking)
         #print(i)
-        if i % 50 == 0:
+        """if i % 50 == 0:
             print(f"\n average Loss for all sample is {np.mean(np.array(loss_value))}")
             print(f"\n average class_error for all sample is {np.mean(np.array(class_error_vec))} \n")
             avg_loss.append(np.mean(np.array(loss_value)))
@@ -189,52 +190,61 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module, postproc
             class_error_vec = []
             loss_value = []
 
-        #if last_epoch != epoch:
-        if i == 4700:
+        if i == dataset_size:
             print("\n Plotting results \n")
 
             result_dir = f'/home/roberto/old_trackformer/Evaluation_figures/{args.model_name}'
             if not os.path.exists(result_dir):
                 os.makedirs(result_dir)
 
-            x = np.linspace(0, 4700*epoch, num=len(avg_loss), endpoint=True)
-            
+            x_val = np.linspace(0, dataset_size*epoch, num=len(avg_loss), endpoint=True)
+            #x_essential = np.linspace(0, args.epoch, num=len(avg_loss), endpoint=True)
+
             plt.clf()
-            plt.plot(x, avg_loss)
+            plt.plot(x_val, avg_loss)
             plt.xlabel('num_images')
             plt.ylabel('loss')
             plt.show()
-            plt.savefig(result_dir + f'/loss_epoch_{last_epoch}.png')
+            plt.savefig(result_dir + f'/loss_epoch_{epoch}.png')
 
-            wandb.log({"loss": avg_loss})
-            
+            wandb.log({"avg_loss": plt})
+
+
             plt.clf()
-            plt.plot(x, avg_class_error)
+            plt.plot(x_val, avg_class_error)
             plt.xlabel('num_images')
             plt.ylabel('avg_class_error')
             plt.show()
-            plt.savefig(result_dir + f'/avg_class_error_epoch_{last_epoch}.png')
+            plt.savefig(result_dir + f'/avg_class_error_epoch_{epoch}.png')
 
-            wandb.log({"avg_class_error": avg_class_error})
+            #wandb.log({"avg_class_error": avg_class_error})
+            wandb.log({"avg_class_error": plt})
 
-
-
-        last_i = i
-        last_epoch = epoch
-
+            #data = [[x, y] for (x, y) in zip(x_val, avg_loss)]
+            #table = wandb.Table(data=data, columns = ["x", "y"])
+            #wandb.log({"train loss plot" : wandb.plot.line(table, "x", "y",title="train_loss_plot")})
+        """
+        # log all the possible metrics for each epoch
+        wandb.log({k: meter.global_avg for k, meter in metric_logger.meters.items()})    
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
 
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    #print("\n \n all metrics after one epoch \n \n " )
+    # log all the possible metrics for each epoch
+    #wandb.log({k: meter.global_avg for k, meter in metric_logger.meters.items()})
 
+    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}, np.mean(avg_loss)
 
+avg_loss_valid = []
 @torch.no_grad()
 def evaluate(model, criterion, postprocessors, data_loader, device,
              output_dir: str, visualizers: dict, args, epoch: int = None):
     model.eval()
     criterion.eval()
+    loss_valid = []
+
 
     metric_logger = utils.MetricLogger(
         args.vis_and_log_interval,
@@ -275,6 +285,16 @@ def evaluate(model, criterion, postprocessors, data_loader, device,
                              **loss_dict_reduced_unscaled)
         metric_logger.update(class_error=loss_dict_reduced['class_error'])
 
+        loss=sum(loss_dict_reduced_scaled.values())
+        loss_valid.append(loss.cpu().numpy())
+        #print(loss_valid)
+
+        metric_dict = {k + "_valid": meter.global_avg for k, meter in metric_logger.meters.items()}
+
+        #print(f"{metric_dict} with type {type(metric_dict)}")
+        wandb.log(metric_dict)
+
+
         if visualizers and (i == 0 or not i % args.vis_and_log_interval):
             results_orig, results = make_results(
                 outputs, targets, postprocessors, args.tracking, return_only_orig=False)
@@ -287,6 +307,35 @@ def evaluate(model, criterion, postprocessors, data_loader, device,
                 args.tracking)
         else:
             results_orig, _ = make_results(outputs, targets, postprocessors, args.tracking)
+
+        ############## validation loss report ##############
+        """
+        if i % 50 == 0:
+            mean_loss = np.mean(np.array(loss_valid))
+            print(f"\n average loss_valid for all sample is {mean_loss}")
+            avg_loss_valid.append(mean_loss)
+            loss_valid = []
+
+        if i == dataset_size:
+            print("\n Plotting results \n")
+
+            result_dir = f'/home/roberto/old_trackformer/Evaluation_figures/{args.model_name}'
+            if not os.path.exists(result_dir):
+                os.makedirs(result_dir)
+
+            x_val = np.linspace(0, dataset_size*epoch, num=len(avg_loss_valid), endpoint=True)
+
+            plt.clf()
+            plt.plot(x_val, avg_loss_valid)
+            plt.xlabel('num_images')
+            plt.ylabel('valid_loss')
+            plt.show()
+            plt.savefig(result_dir + f'/loss_epoch_{epoch}.png')
+
+            wandb.log({"avg_valid_loss": plt})
+        """
+        ############## end of validation loss report ##############
+
 
         # TODO. remove cocoDts from coco eval and change example results output
         if coco_evaluator is not None:
@@ -406,5 +455,7 @@ def evaluate(model, criterion, postprocessors, data_loader, device,
 
     if args.debug:
         exit()
+
+
 
     return eval_stats, coco_evaluator

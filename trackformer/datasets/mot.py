@@ -145,7 +145,9 @@ def build_mot(image_set, args):
     #img_folder = root / split
     ann_file = root / f"annotations/{split}.json"
 
-    img_folder = root /  f"mot17_{split}_1_coco" #  CHANGED DO TO INVALID PATH PREVIOUSLY SPECIFIED
+    #img_folder = root /  f"mot17_{split}_1_coco" #  CHANGED DO TO INVALID PATH PREVIOUSLY SPECIFIED
+
+    img_folder = root /  f"{split}" #  CHANGED DO TO INVALID PATH PREVIOUSLY SPECIFIED
 
     print("\ntrain img_folder images", img_folder)
 

@@ -152,13 +152,13 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
         print(f"TRACK SEQ: {seq}")
 
         # frame 380 person is visible
-        start_frame = int(frame_range['start'] * len(seq))
-        #start_frame = int(frame_range['start']+380)
+        #start_frame = int(frame_range['start'] * len(seq))
+        start_frame = int(frame_range['start']+380)
         print("\n",start_frame)
 
         #end_frame = int(frame_range['end'] * len(seq)) 
-        end_frame = int(frame_range['start']+400) 
-        #end_frame = int(frame_range['start']+1380) 
+        #end_frame = int(frame_range['start']+2000) 
+        end_frame = int(frame_range['start']+1380) 
         print("\n",end_frame)
 
 
@@ -300,11 +300,11 @@ if __name__ == "__main__":
         frame_range={"start":0.0, "end":1.0}, _config="cfgs/track.yaml", _log=None, _run=None,
         obj_detector_model=None )"""
 
-    main(dataset_name="EXCAV", data_root_dir="//home/roberto/old_trackformer/data/MOT17/mot17_train_1_coco", \
-        output_dir="data/outdir/Mot17_RemappedDetr_model", write_images="pretty", seed=666, interpolate=False,\
+    main(dataset_name="EXCAV", data_root_dir="/home/roberto/old_trackformer/data/EXCAV/test", \
+        output_dir="data/outdir/TrackformerDetrRetrained/6_epochs_config", write_images="pretty", seed=666, interpolate=False,\
         verbose=True, load_results_dir=None,  generate_attention_maps=False,\
         tracker_cfg=tracker_cfg, \
-        obj_detect_checkpoint_file="/home/roberto/old_trackformer/models/RemappedDetr_model/checkpoint_epoch_24.pth",
+        obj_detect_checkpoint_file="/home/roberto/old_trackformer/models/mots20_train_masks/checkpoint_epoch_6.pth",
         frame_range={"start":0.0, "end":1.0}, _config="cfgs/track.yaml", _log=None, _run=None,
         obj_detector_model=None )
  

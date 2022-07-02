@@ -20,7 +20,7 @@ from torchvision.ops.boxes import box_iou
 
 from trackformer.datasets.tracking.mots20_sequence import load_mots_gt
 
-MOTS_ROOT = 'data/MOTS20'
+MOTS_ROOT = 'data/MOTS'
 VIS_THRESHOLD = 0.25
 
 MOT_15_SEQS_INFO = {
@@ -42,8 +42,11 @@ def generate_coco_from_mot(split_name='train', seqs_names=None,
     if frame_range is None:
         frame_range = {'start': 0.0, 'end': 1.0}
 
+    mots = True
     if mots:
         data_root = MOTS_ROOT
+        root_split='train'
+        split_name='train'
     root_split_path = os.path.join(data_root, root_split)
     root_split_mots_path = os.path.join(MOTS_ROOT, root_split)
     coco_dir = os.path.join(data_root, split_name)

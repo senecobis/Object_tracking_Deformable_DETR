@@ -162,7 +162,7 @@ def convert_coco_poly_to_mask(segmentations, height, width):
     masks = []
     for polygons in segmentations:
 
-        print(f"\n polygons {polygons}, \n height {height}, \n width {width} \n in coco")
+        #print(f"\n polygons {polygons}, \n height {height}, \n width {width} \n in coco")
 
         if isinstance(polygons, dict):
             rles = {'size': polygons['size'],
