@@ -1,16 +1,16 @@
 
-""" Simple function to generate video from frames by Roberto Pellerito"""
+# Simple function to generate video from frames by Roberto Pellerito
 
 import cv2
 import os
 import math
 
-image_folder = '/home/roberto/old_trackformer/data/outdir/TrackformerDetrRetrained/6_epochs_config/EXCAV/test'
-video_name = '/home/roberto/EXCAV_segmentation_6_epochs_on_Mots20DETR.mp4'
-images = []
+image_folder = '//home/roberto/old_trackformer/data/outdir/ScratchedModels/ScratchedMots20Model_res50/EXCAV/mot17_val_1_coco'
+video_name = '/home/roberto/ExcavDetrFinal_mot17_val_1_coco.mp4'
 
-list = sorted(os.listdir(image_folder))
-for img in list:
+images = []
+imges = sorted(os.listdir(image_folder))
+for img in imges:
     images.append(img)
     print(img)
 

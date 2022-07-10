@@ -16,7 +16,9 @@ from torch.utils.data import DataLoader, DistributedSampler
 from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
 import torch.nn as nn
 import wandb 
-wandb.init(project="DETR_obj_tracking")
+wandb.init(project="DETR_obj_tracking", resume=False)
+wandb.run.name = "Scratched_COCO_DETR_valid"
+wandb.run.save()
 import matplotlib.pyplot as plt
 
 
@@ -284,8 +286,26 @@ def train(args: Namespace, obj_detect_checkpoint_file ) -> None:
 
         model_state_dict = model_without_ddp.state_dict()
         checkpoint_state_dict = checkpoint['model']
+
         checkpoint_state_dict = {
             k.replace('detr.', ''): v for k, v in checkpoint['model'].items()}
+        
+        if args.start_last_layers_from_scratch:
+            for k, v in model_state_dict.items():
+                if 'class_embed' in k:
+                    print('delete class_embed to start from scratch')
+                    del checkpoint_state_dict[k] 
+
+                  
+        # delete class_embed.weight and bias since mismatching ADDED BY ME
+        if not args.start_last_layers_from_scratch:
+            for k, v in model_state_dict.items():
+                if 'class_embed' in k:
+                    embed_weight_size = checkpoint_state_dict[k].shape
+                    if embed_weight_size[0] == 1:
+                        print('delete class_embed since weights are less then 2')
+                        del checkpoint_state_dict["class_embed.weight"] #torch.Size([2, 256]).
+                        del checkpoint_state_dict["class_embed.bias"]   #torch.Size([2]).
 
         resume_state_dict = {}
         for k, v in model_state_dict.items():
@@ -307,13 +327,12 @@ def train(args: Namespace, obj_detect_checkpoint_file ) -> None:
                     resume_state_dict[k] = v
                     print(f'Load {k} {tuple(v.shape)} from scratch.')
                     continue
-
                 elif 'linear2' in k or 'input_proj' in k:
                     resume_value = checkpoint_value.repeat((2,) + (num_dims - 1) * (1, ))
                 elif 'class_embed' in k:
                     resume_value = checkpoint_value[[1,]]
-                    # resume_value = v
-                    # print(f'Load {k} {tuple(v.shape)} from scratch.')
+                    resume_value = v
+                    print(f'Load {k} {tuple(v.shape)} from scratch.')
                 else:
                     raise NotImplementedError(f"No rule for {k} with shape {v.shape}.")
 
@@ -346,6 +365,11 @@ def train(args: Namespace, obj_detect_checkpoint_file ) -> None:
 
         model_without_ddp.load_state_dict(resume_state_dict,  strict=True)
 
+        #for k, v in resume_state_dict.items():
+        #    if 'layers_track_attention' in k:
+        #        print(resume_state_dict[k].shape)
+
+
         # RESUME OPTIM
         if not args.eval_only and args.resume_optim:
             if 'optimizer' in checkpoint:
@@ -367,7 +391,6 @@ def train(args: Namespace, obj_detect_checkpoint_file ) -> None:
                 for k_inner in v.keys():
                     visualizers[k][k_inner].win = checkpoint['vis_win_names'][k][k_inner]
 
-    args.eval_only = False
     if args.eval_only:
         eval_stats, coco_evaluator = evaluate(
             model, criterion, postprocessors, data_loader_val, device,
@@ -379,11 +402,11 @@ def train(args: Namespace, obj_detect_checkpoint_file ) -> None:
         return
 
 
-    look_inside = True
+    look_inside = False
     if look_inside :
 
         parameters = {"params": [p for n, p in model_without_ddp.named_parameters() \
-                if match_name_keywords(n, ['layers_track_attention']) and p.requires_grad]}
+                if match_name_keywords(n, ['embed']) and p.requires_grad]}
         
         print(f"\n those are the params : {parameters} and those their number \n \
         {sum(p.numel() for n, p in model_without_ddp.named_parameters() if match_name_keywords(n, ['layers_track_attention']) and p.requires_grad)}")
@@ -411,7 +434,7 @@ def train(args: Namespace, obj_detect_checkpoint_file ) -> None:
             visualizers['train'], scheduler, args)
         
 
-        args.eval_train = False # change this override
+        args.eval_train = False # change this overwrite
         if args.eval_train:
             random_transforms = data_loader_train.dataset._transforms
             data_loader_train.dataset._transforms = data_loader_val.dataset._transforms
@@ -427,16 +450,16 @@ def train(args: Namespace, obj_detect_checkpoint_file ) -> None:
 
         checkpoint_paths = [output_dir / 'checkpoint.pth']
         
-        print("\n VALIDATION time of THE model ... \n")
         validate = True
-        if epoch > 1 and validate:
+        if validate and epoch == 21:
+            print("\n VALIDATION time of THE model ... \n")
             val_stats, _ = evaluate(
                 model, criterion, postprocessors, data_loader_val, device,
                 output_dir, visualizers['val'], args, epoch)
 
         # VAL
         
-        if epoch == 1 or not epoch % args.val_interval:
+        if False: #epoch == 1 or not epoch % args.val_interval:
             print("\n VALIDATING THE model ... \n")
             val_stats, _ = evaluate(
                 model, criterion, postprocessors, data_loader_val, device,
@@ -486,16 +509,17 @@ def train(args: Namespace, obj_detect_checkpoint_file ) -> None:
 
 if __name__ == '__main__':
 
-
     train_yaml, deformable_yaml, tracking_yaml, mots20_yaml, \
         full_res_yaml, focal_loss_yaml, train_mot17_yaml = import_config()
 
     #config = {**train_yaml, **deformable_yaml, **tracking_yaml, **mots20_yaml, 
     #**full_res_yaml, **focal_loss_yaml} # dictionary concatenation
+    
+    """
     train_mots20 = False
     if train_mots20:
         config = {**train_yaml, **tracking_yaml, **mots20_yaml} # dictionary concatenation
-        config["model_name"] = "TrackformerDetrRetrained"
+        config["model_name"] = "ScratchedMots20Model"
         config["save_model_interval"] = 1
 
         wandb.config = config
@@ -507,8 +531,10 @@ if __name__ == '__main__':
         args.mot_path_val="data/MOTS20"
         args.train_split="mots20_train_1_coco"
         args.val_split="mots20_val_1_coco"
-        args.epochs= 20
+        args.epochs= 21
         args.val_interval = 1
+        args.start_last_layers_from_scratch = True
+        args.backbone = "resnet101"
 
         train(args, None)
 
@@ -518,20 +544,49 @@ if __name__ == '__main__':
 
         # override configuration
         config["use_excav_detr"] = train_mots20
-        config["model_name"] = "ExacavatorDETR"
+        config["model_name"] = "ScratchedExacvDetr"
         config["output_dir"] = "/home/roberto/old_trackformer/models/" + config["model_name"]
         config["eval_train"] = True
-        config["save_model_interval"] = 1
-        config["epochs"] = 5
+        config["save_model_interval"] = 5
+        config["epochs"] = 21
 
         args = nested_dict_to_namespace(config)
 
-        args.resume = "/home/roberto/old_trackformer/models/TrainedDetr_model_finetuned_new_epochs/checkpoint_epoch_91.pth"
+        args.resume = "/home/roberto/old_trackformer/models/ExcavDETR_orig/detr_panoptic_model.pth"
         args.mot_path_train="data/MOTS20"
         args.mot_path_val="data/MOTS20"
         args.train_split="mots20_train_1_coco"
         args.val_split="mots20_val_1_coco"
         args.val_interval = 1
+        args.num_workers = 0
+        args.start_last_layers_from_scratch = False
+        args.backbone = "resnet50"
+
+
+
+        train(args, None)
+    """
+    train_fb_DETR = True
+    if train_fb_DETR:
+        config = {**train_yaml, **tracking_yaml, **mots20_yaml} # dictionary concatenation
+        config["model_name"] = "COCO_DETR"
+        config["save_model_interval"] = 1
+
+        wandb.config = config
+        args = nested_dict_to_namespace(config)
+
+        args.resume = "/home/roberto/old_trackformer/models/COCO_DETR/checkpoint_epoch_17.pth"
+        args.output_dir="/home/roberto/old_trackformer/models/" + config["model_name"]
+        args.mot_path_train="data/MOTS20"
+        args.mot_path_val="data/MOTS20"
+        args.train_split="mots20_train_1_coco"
+        args.val_split="mots20_val_1_coco"
+        args.epochs= 21
+        args.val_interval = 1
+        args.start_last_layers_from_scratch = False
+        args.backbone = "resnet50"
+        args.eval_only = True
+
 
         train(args, None)
 

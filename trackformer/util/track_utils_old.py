@@ -75,6 +75,7 @@ def rand_cmap(nlabels, type='bright', first_color_black=True, last_color_black=F
         print('Number of labels: ' + str(nlabels))
 
     # Generate color map for bright colors, based on hsv
+    print("nlabels", nlabels)
     if type == 'bright':
         randHSVcolors = [(np.random.uniform(low=0.0, high=1),
                           np.random.uniform(low=0.2, high=1),
@@ -82,6 +83,7 @@ def rand_cmap(nlabels, type='bright', first_color_black=True, last_color_black=F
 
         # Convert HSV list to RGB
         randRGBcolors = []
+        #print("randHSVcolors", randHSVcolors)
         for HSVcolor in randHSVcolors:
             randRGBcolors.append(colorsys.hsv_to_rgb(HSVcolor[0], HSVcolor[1], HSVcolor[2]))
 
@@ -90,6 +92,8 @@ def rand_cmap(nlabels, type='bright', first_color_black=True, last_color_black=F
 
         if last_color_black:
             randRGBcolors[-1] = [0, 0, 0]
+
+        #print("randRGBcolors", randRGBcolors)
 
         random_colormap = LinearSegmentedColormap.from_list('new_map', randRGBcolors, N=nlabels)
 
@@ -140,18 +144,11 @@ def plot_sequence(tracks, data_loader, output_dir, write_images, generate_attent
     # styles = defaultdict(lambda: next(loop_cy_iter))
 
     # cmap = plt.cm.get_cmap('hsv', )
-    mx = 0
-    #mx = 6
-    print("\n ")
-    for track_id, track_data in tracks.items():
-        print("\n tracks.items()", tracks.items())
-  
-        mx = max(mx, track_id)
-        print("\n this is mx : ",mx)
-        print("\n this is track_id : ",track_id)
-        #mx = track_id
+    print("\n \n THE LEN OF THE TRACK :", len(tracks))
+    print("\n \n THE TRACK :", tracks)
 
-    cmap = rand_cmap(mx, type='bright', first_color_black=False, last_color_black=False)
+    
+    cmap = rand_cmap(len(tracks), type='bright', first_color_black=False, last_color_black=False)
 
     # if generate_attention_maps:
     #     attention_maps_per_track = {
@@ -165,7 +162,8 @@ def plot_sequence(tracks, data_loader, output_dir, write_images, generate_attent
 
         # _, attention_maps_bin_edges = np.histogram(all_attention_maps, bins=2)
 
-    for frame_id, frame_data  in enumerate(tqdm.tqdm(data_loader)):
+    #for frame_id, frame_data  in enumerate(tqdm.tqdm(data_loader)):
+    for frame_id, frame_data  in enumerate(data_loader):
         img_path = frame_data['img_path'][0]
         img = cv2.imread(img_path)[:, :, (2, 1, 0)]
         height, width, _ = img.shape
@@ -206,7 +204,7 @@ def plot_sequence(tracks, data_loader, output_dir, write_images, generate_attent
 
                 if write_images == 'debug':
                     ax.annotate(
-                        f"{track_id} - {track_data[frame_id]['obj_ind']} ({track_data[frame_id]['score']:.2f})",
+                        f"{track_id} ({track_data[frame_id]['score']:.2f})",
                         (bbox[0] + (bbox[2] - bbox[0]) / 2.0, bbox[1] + (bbox[3] - bbox[1]) / 2.0),
                         color=annotate_color, weight='bold', fontsize=12, ha='center', va='center')
 

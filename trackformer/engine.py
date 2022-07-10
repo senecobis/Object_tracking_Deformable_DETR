@@ -293,7 +293,8 @@ def evaluate(model, criterion, postprocessors, data_loader, device,
 
         #print(f"{metric_dict} with type {type(metric_dict)}")
         wandb.log(metric_dict)
-
+        
+        visualizers = False
 
         if visualizers and (i == 0 or not i % args.vis_and_log_interval):
             results_orig, results = make_results(
@@ -307,34 +308,6 @@ def evaluate(model, criterion, postprocessors, data_loader, device,
                 args.tracking)
         else:
             results_orig, _ = make_results(outputs, targets, postprocessors, args.tracking)
-
-        ############## validation loss report ##############
-        """
-        if i % 50 == 0:
-            mean_loss = np.mean(np.array(loss_valid))
-            print(f"\n average loss_valid for all sample is {mean_loss}")
-            avg_loss_valid.append(mean_loss)
-            loss_valid = []
-
-        if i == dataset_size:
-            print("\n Plotting results \n")
-
-            result_dir = f'/home/roberto/old_trackformer/Evaluation_figures/{args.model_name}'
-            if not os.path.exists(result_dir):
-                os.makedirs(result_dir)
-
-            x_val = np.linspace(0, dataset_size*epoch, num=len(avg_loss_valid), endpoint=True)
-
-            plt.clf()
-            plt.plot(x_val, avg_loss_valid)
-            plt.xlabel('num_images')
-            plt.ylabel('valid_loss')
-            plt.show()
-            plt.savefig(result_dir + f'/loss_epoch_{epoch}.png')
-
-            wandb.log({"avg_valid_loss": plt})
-        """
-        ############## end of validation loss report ##############
 
 
         # TODO. remove cocoDts from coco eval and change example results output
@@ -356,7 +329,7 @@ def evaluate(model, criterion, postprocessors, data_loader, device,
                 res_pano[j]["file_name"] = file_name
 
             panoptic_evaluator.update(res_pano)
-
+    
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)

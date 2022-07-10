@@ -23,6 +23,8 @@ from trackformer.util.misc import nested_dict_to_namespace
 from trackformer.util.track_utils import (evaluate_mot_accums, get_mot_accum,
                                           interpolate_tracks, plot_sequence)
 
+import timeit, time
+
 
 """ Source the parent directory.
  for istance you can run 
@@ -79,12 +81,14 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
         #obj_detect_args.dataset = "mot"
 
         obj_detector, _, obj_detector_post = build_model(obj_detect_args)
+        
         # our model
         obj_detect_checkpoint = torch.load(
             obj_detect_checkpoint_file, map_location=lambda storage, loc: storage)
 
         obj_detect_state_dict = obj_detect_checkpoint['model']
 
+        """
         new_obj_detect_state_dict = obj_detect_state_dict.copy()
         for field in new_obj_detect_state_dict:
             if field[0:4] == "detr":                
@@ -98,12 +102,12 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
 
         track_att_state_dict = track_att_checkpoint['model']
 
-        # add trackattention layers
+        # add track attention layers
         for keys in track_att_state_dict:
             if keys not in new_obj_detect_state_dict and keys[5:13] != "backbone":
                 print("\n new key :", keys)
                 obj_detect_state_dict[keys] = track_att_state_dict[keys]
-
+        """
 
         detr_model = False
         if detr_model:
@@ -152,13 +156,13 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
         print(f"TRACK SEQ: {seq}")
 
         # frame 380 person is visible
-        #start_frame = int(frame_range['start'] * len(seq))
-        start_frame = int(frame_range['start']+380)
+        start_frame = int(frame_range['start'] * len(seq))
+        #start_frame = int(frame_range['start']+380)
         print("\n",start_frame)
 
-        #end_frame = int(frame_range['end'] * len(seq)) 
-        #end_frame = int(frame_range['start']+2000) 
-        end_frame = int(frame_range['start']+1380) 
+        end_frame = int(frame_range['end'] * len(seq)) 
+        #end_frame = int(frame_range['start']+1380) 
+        #end_frame = int(frame_range['start']+1) 
         print("\n",end_frame)
 
 
@@ -172,19 +176,24 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
         if not results:
             start = time.time()
 
+            time_vec = []
             for frame_id, frame_data in enumerate(tqdm.tqdm(seq_loader, file=sys.stdout)):
                 #print("\n frame_data", frame_data)
+                start = time.time()
 
                 with torch.no_grad():
                     tracker.step(frame_data)
 
+                torch.cuda.synchronize()
+                end = time.time() - start
+                time_vec.append(end)
+
+            print("time average", np.mean(time_vec) )
+            print("time variance", np.var(time_vec) )
+
             results = tracker.get_results()
-            #print("\n results", results)
 
             time_total += time.time() - start
-
-           # _log.info(f"NUM TRACKS: {len(results)} ReIDs: {tracker.num_reids}")
-           # _log.info(f"RUNTIME: {time.time() - start :.2f} s")
 
             print(f"NUM TRACKS: {len(results)} ReIDs: {tracker.num_reids}")
             print(f"RUNTIME: {time.time() - start :.2f} s")
@@ -234,15 +243,12 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
                 #_log.info(f'SWITCH_GAPS_HIST (bin_width=10): {switch_gaps_hist}')
 
         if output_dir is not None and write_images:
+
+            #print("results", results)
     
             plot_sequence(
                 results, seq_loader, osp.join(output_dir, dataset_name, str(seq)),
                 write_images, generate_attention_maps) 
-
-    #if time_total:
-    #    _log.info(f"RUNTIME ALL SEQS (w/o EVAL or IMG WRITE): "
-    #              f"{time_total:.2f} s for {num_frames} frames "
-    #              f"({num_frames / time_total:.2f} Hz)")
 
     if obj_detector_model is None:
        # _log.info(f"EVAL:")
@@ -291,22 +297,23 @@ if __name__ == "__main__":
         obj_detect_checkpoint_file="models/mots20_train_masks/checkpoint.pth",
         frame_range={"start":0.0, "end":1.0}, _config="cfgs/track.yaml", _log=None, _run=None,
         obj_detector_model=None )"""
-    
-    """main(dataset_name="MOTS20-ALL", data_root_dir="data", \
-        output_dir="data/outdir", write_images="pretty", seed=666, interpolate=False,\
+""" 
+main(dataset_name="MOT17-ALL", data_root_dir="data", \
+        output_dir="data/outdir/evaluation_onMOT17_ourDETR_retrained", write_images="pretty", seed=666, interpolate=False,\
         verbose=True, load_results_dir=None,  generate_attention_maps=False,\
         tracker_cfg=tracker_cfg, \
-        obj_detect_checkpoint_file="/home/rpellerito/old_trackformer/models/Excav_detr_multi_frame/detr_panoptic_model.pth",
-        frame_range={"start":0.0, "end":1.0}, _config="cfgs/track.yaml", _log=None, _run=None,
-        obj_detector_model=None )"""
-
-    main(dataset_name="EXCAV", data_root_dir="/home/roberto/old_trackformer/data/EXCAV/test", \
-        output_dir="data/outdir/TrackformerDetrRetrained/6_epochs_config", write_images="pretty", seed=666, interpolate=False,\
-        verbose=True, load_results_dir=None,  generate_attention_maps=False,\
-        tracker_cfg=tracker_cfg, \
-        obj_detect_checkpoint_file="/home/roberto/old_trackformer/models/mots20_train_masks/checkpoint_epoch_6.pth",
+        obj_detect_checkpoint_file="/home/roberto/old_trackformer/models/mots20_train_masks/checkpoint_epoch_21.pth",
         frame_range={"start":0.0, "end":1.0}, _config="cfgs/track.yaml", _log=None, _run=None,
         obj_detector_model=None )
- 
-    
+        
+"""
+main(dataset_name="EXCAV", data_root_dir="/home/roberto/old_trackformer/data/MOTS20/mots20_val_2_coco", \
+    output_dir="data/outdir/Official_plots/ZurichWalk_COCODETRmodel", write_images="pretty", seed=666, interpolate=False,\
+    verbose=True, load_results_dir=None,  generate_attention_maps=False,\
+    tracker_cfg=tracker_cfg, \
+    obj_detect_checkpoint_file="//home/roberto/old_trackformer/models/ScratchedMots20Model/checkpoint_epoch_21.pth",
+    frame_range={"start":0.0, "end":1.0}, _config="cfgs/track.yaml", _log=None, _run=None,
+    obj_detector_model=None )
+
+
 

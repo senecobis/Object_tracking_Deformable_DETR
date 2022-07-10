@@ -21,6 +21,11 @@ for split in ['TRAIN', 'TEST', 'ALL', '01', '02', '03', '04', '05',
         DATASETS[name] = (
             lambda kwargs, split=split, dets=dets: MOT17Wrapper(split, dets, **kwargs))
 
+use_mot17 = True
+if use_mot17:
+    DATASETS["MOT17-ALL"] = (
+    lambda kwargs, split="ALL", dets="ALL": MOT17Wrapper(split, dets, **kwargs))
+
 
 for split in ['TRAIN', 'TEST', 'ALL', '01', '02', '03', '04', '05',
               '06', '07', '08']:
