@@ -77,9 +77,6 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
         obj_detect_args = nested_dict_to_namespace(yaml.unsafe_load(open(obj_detect_config_path)))
         img_transform = obj_detect_args.img_transform
 
-        #obj_detect_args.dataset = "coco_panoptic"    # added by me 
-        #obj_detect_args.dataset = "mot"
-
         obj_detector, _, obj_detector_post = build_model(obj_detect_args)
         
         # our model
@@ -129,7 +126,6 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
         if 'epoch' in obj_detect_checkpoint:
             print(f"INIT object detector [EPOCH: {obj_detect_checkpoint['epoch']}]")
 
-
         obj_detector.cuda()
     else:
         obj_detector = obj_detector_model['model']
@@ -160,8 +156,8 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
         #start_frame = int(frame_range['start']+380)
         print("\n",start_frame)
 
-        end_frame = int(frame_range['end'] * len(seq)) 
-        #end_frame = int(frame_range['start']+1380) 
+        #end_frame = int(frame_range['end'] * len(seq)) 
+        end_frame = int(frame_range['start']+100) 
         #end_frame = int(frame_range['start']+1) 
         print("\n",end_frame)
 
@@ -197,6 +193,7 @@ def main(seed, dataset_name, obj_detect_checkpoint_file, tracker_cfg,
 
             print(f"NUM TRACKS: {len(results)} ReIDs: {tracker.num_reids}")
             print(f"RUNTIME: {time.time() - start :.2f} s")
+
 
             if interpolate:
                 results = interpolate_tracks(results)
@@ -311,7 +308,7 @@ main(dataset_name="EXCAV", data_root_dir="/home/roberto/old_trackformer/data/MOT
     output_dir="data/outdir/Official_plots/ZurichWalk_COCODETRmodel", write_images="pretty", seed=666, interpolate=False,\
     verbose=True, load_results_dir=None,  generate_attention_maps=False,\
     tracker_cfg=tracker_cfg, \
-    obj_detect_checkpoint_file="//home/roberto/old_trackformer/models/ScratchedMots20Model/checkpoint_epoch_21.pth",
+    obj_detect_checkpoint_file="/home/roberto/old_trackformer/models/mots20_train_masks/checkpoint_epoch_21.pth",
     frame_range={"start":0.0, "end":1.0}, _config="cfgs/track.yaml", _log=None, _run=None,
     obj_detector_model=None )
 
